@@ -1,0 +1,132 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  OWNER
+  STAFF
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CANCELLED
+}
+
+enum PaymentProvider {
+  CBE
+  TELEBIRR
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REQUIRES_REVIEW
+}
+
+enum VerificationOutcome {
+  CONFIRMED
+  FAILED
+  INCONCLUSIVE
+  ERROR
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(STAFF)
+  isActive     Boolean  @default(true)
+
+  orders       Order[]
+  auditLogs    AuditLog[]
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  orderNumber String      @unique
+  amount      Decimal     @db.Decimal(12, 2)
+  currency    String      @default("ETB")
+  status      OrderStatus @default(PENDING_PAYMENT)
+
+  createdById String
+  createdBy   User        @relation(fields: [createdById], references: [id])
+
+  payments    Payment[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, createdAt])
+}
+
+model Payment {
+  id                   String          @id @default(cuid())
+  orderId              String
+  order                Order           @relation(fields: [orderId], references: [id])
+
+  provider             PaymentProvider
+  transactionReference String
+  amount               Decimal?        @db.Decimal(12, 2)
+  status               PaymentStatus   @default(PENDING)
+
+  recipientMatched     Boolean?
+  verifiedAt           DateTime?
+
+  verificationAttempts VerificationAttempt[]
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([provider, transactionReference])
+  @@index([orderId])
+  @@index([status, createdAt])
+}
+
+model VerificationAttempt {
+  id              String              @id @default(cuid())
+  paymentId       String
+  payment         Payment             @relation(fields: [paymentId], references: [id])
+
+  outcome         VerificationOutcome
+  providerStatus  String?
+  errorCode       String?
+  responseSummary Json?
+
+  attemptedAt     DateTime @default(now())
+
+  @@index([paymentId, attemptedAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+}
+
